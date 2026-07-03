@@ -120,7 +120,16 @@
     margin: 2.2em 0 0.9em;
     scroll-margin-top: 70px;
   }
-  p.body-text { margin: 0 0 1em; text-align: justify; orphans: 3; widows: 3; }
+  p.body-text {
+    margin: 0 0 1em;
+    text-align: justify;
+    orphans: 3;
+    widows: 3;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
 
   .fn-ref {
     color: var(--accent);
