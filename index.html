@@ -83,6 +83,20 @@
   }
   #topbar button:active { background: var(--accent); color: var(--accent-fg); }
   #search-prev, #search-next { padding: 8px 10px; font-weight: 700; }
+  #bookmark-toggle { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+  #bookmark-icon { display: block; }
+  #bookmark-toggle.set #bookmark-icon { fill: var(--accent); stroke: var(--accent); }
+  #bookmark-clear {
+    display: none;
+    position: absolute; top: -6px; right: -6px;
+    width: 17px; height: 17px;
+    border-radius: 50%;
+    background: #c0392b; color: #fff;
+    font-size: 12px; line-height: 1;
+    align-items: center; justify-content: center;
+  }
+  #bookmark-toggle.set #bookmark-clear { display: flex; }
+  [data-blk].bookmarked { border-left: 3px solid var(--accent); padding-left: 10px; margin-left: -13px; }
   #header-spacer { height: 58px; }
 
   .cover-block { text-align: center; margin: 14px 0 1.2em; }
@@ -336,6 +350,12 @@
     <button id="search-next" title="Следующее совпадение">&darr;</button>
   </div>
   <div class="controls">
+    <button id="bookmark-toggle" title="Закладка">
+      <svg id="bookmark-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M6 2.5a1.5 1.5 0 0 0-1.5 1.5v17l7.5-4.5 7.5 4.5V4a1.5 1.5 0 0 0-1.5-1.5H6z"></path>
+      </svg>
+      <span id="bookmark-clear" title="Убрать закладку">&times;</span>
+    </button>
     <button id="notes-toggle" title="Заметки">Заметки</button>
     <button id="font-dec" title="Уменьшить шрифт">A&minus;</button>
     <button id="font-inc" title="Увеличить шрифт">A+</button>
@@ -1185,6 +1205,60 @@ safeInit("highlighting and comments", function () {
     notesClose.addEventListener("click", closeNotes);
     notesBackdrop.addEventListener("click", closeNotes);
   }
+});
+
+// ---------- reading-position bookmark ----------
+// A single bookmark (not a list): tap sets it on the block currently at the
+// top of the viewport, tap again jumps back to it, the small badge on the
+// icon clears it. Deliberately just one slot -- this is "where I stopped
+// reading", not a second annotation system next to "Заметки".
+safeInit("bookmark", function () {
+  var article = document.getElementById("lecture-body");
+  var btn = document.getElementById("bookmark-toggle");
+  var clearBtn = document.getElementById("bookmark-clear");
+  if (!article || !btn) { return; }
+  var KEY = "lecture-bookmark";
+
+  function currentBlockId() {
+    var headerSpacer = document.getElementById("header-spacer");
+    var headerH = headerSpacer ? headerSpacer.offsetHeight : 0;
+    var blocks = article.querySelectorAll("[data-blk]");
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].getBoundingClientRect().bottom > headerH + 4) { return blocks[i].getAttribute("data-blk"); }
+    }
+    return blocks.length ? blocks[blocks.length - 1].getAttribute("data-blk") : null;
+  }
+
+  function paintMark(id) {
+    article.querySelectorAll(".bookmarked").forEach(function (el) { el.classList.remove("bookmarked"); });
+    if (id) {
+      var el = article.querySelector('[data-blk="' + id + '"]');
+      if (el) { el.classList.add("bookmarked"); }
+    }
+  }
+
+  function setState(id) {
+    if (id) { store.set(KEY, id); btn.classList.add("set"); }
+    else { store.set(KEY, ""); btn.classList.remove("set"); }
+    paintMark(id);
+  }
+
+  var saved = store.get(KEY);
+  setState(saved || null);
+
+  btn.addEventListener("click", function () {
+    var id = store.get(KEY);
+    if (id) {
+      var el = article.querySelector('[data-blk="' + id + '"]');
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    } else {
+      setState(currentBlockId());
+    }
+  });
+  clearBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    setState(null);
+  });
 });
 
 // ---------- offline support: cache this page so it keeps working without a
