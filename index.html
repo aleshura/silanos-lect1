@@ -24,6 +24,7 @@
     --mark-bg-current: #ffcc33;
     --base-size: 14pt;
     --font-family: 'Literata', serif;
+    --sel-toolbar-lift: 0px;
   }
   * { box-sizing: border-box; }
   html, body { background: var(--bg); color: var(--fg); }
@@ -209,10 +210,16 @@
      so it never fights the browser's own native selection menu for space --
      Samsung Internet, Chrome and Safari all render that native menu inside
      the page's selection area, which would otherwise sit on top of a
-     toolbar positioned near the selection rect. */
+     toolbar positioned near the selection rect.
+     --sel-toolbar-lift additionally raises the bar above Android's "Search
+     the web" smart-selection card, which only appears when the page is
+     installed as an app (display-mode: standalone) on Chrome for Android.
+     That card is a system overlay drawn above the page, so no z-index can
+     win against it -- it has to be dodged by position instead. See the
+     feature-detection snippet near the top of the script. */
   #sel-toolbar {
     position: fixed;
-    left: 0; right: 0; bottom: 0;
+    left: 0; right: 0; bottom: var(--sel-toolbar-lift);
     display: none;
     align-items: center;
     justify-content: center;
@@ -574,6 +581,24 @@
   </div>
 </div>
 <script>
+// On Chrome for Android, when this page is installed as an app ("Add to
+// Home screen" -> opens standalone, no browser chrome), selecting text
+// triggers a system-level "Search the web" card docked to the bottom of
+// the screen. It's drawn by Android above the page itself, so it fully
+// covers our own bottom-docked #sel-toolbar. Safari/iPadOS and Chrome's
+// regular tab mode don't show this card, so the lift is only applied when
+// both conditions (standalone + Android) are true.
+// If the highlight toolbar still ends up partly covered on a given device,
+// bump the "72px" value below -- it's a rough estimate, not a measured
+// constant, since the card's height isn't exposed to the page.
+safeInit("android-standalone-toolbar-lift", function () {
+  var isStandalone = window.matchMedia("(display-mode: standalone)").matches;
+  var isAndroid = /Android/i.test(navigator.userAgent);
+  if (isStandalone && isAndroid) {
+    document.documentElement.style.setProperty("--sel-toolbar-lift", "72px");
+  }
+});
+
 function safeInit(label, fn) {
   try { fn(); } catch (e) {
     if (window.console && console.error) {
