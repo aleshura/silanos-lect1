@@ -267,6 +267,62 @@
     z-index: 100;
   }
   #back-to-toc.visible { display: flex; }
+
+  /* notes panel */
+  #notes-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.25);
+    display: none; z-index: 230;
+  }
+  #notes-backdrop.open { display: block; }
+  #notes-panel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: min(360px, 100%);
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    box-shadow: -6px 0 24px rgba(0,0,0,0.2);
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+    z-index: 240;
+    display: flex;
+    flex-direction: column;
+  }
+  #notes-panel.open { transform: translateX(0); }
+  #notes-panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 18px; border-bottom: 1px solid var(--border); flex: 0 0 auto;
+  }
+  #notes-panel-head h2 { margin: 0; font-size: 1.05rem; }
+  #notes-close {
+    border: none; background: var(--border); color: var(--fg);
+    width: 32px; height: 32px; border-radius: 50%; font-size: 18px;
+    cursor: pointer; line-height: 1;
+  }
+  #notes-list { overflow-y: auto; flex: 1 1 auto; padding: 6px 0; }
+  .note-item {
+    display: flex; gap: 10px; align-items: flex-start;
+    width: 100%; text-align: left; font: inherit; font-size: 0.92em;
+    padding: 12px 18px; border: none; border-bottom: 1px solid var(--border);
+    background: none; color: var(--fg); cursor: pointer;
+  }
+  .note-item:hover { background: rgba(11, 95, 165, 0.06); }
+  .note-swatch {
+    width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; margin-top: 4px;
+  }
+  .note-swatch.none { border: 1px solid var(--border); }
+  .note-swatch.hl-blue { background: #7fbfff; }
+  .note-swatch.hl-green { background: #8fe08f; }
+  .note-swatch.hl-yellow { background: #ffe066; }
+  .note-body { min-width: 0; }
+  .note-frag { line-height: 1.4; }
+  .note-comment-mark { color: var(--muted); font-size: 0.85em; margin-top: 2px; }
+  #notes-empty { padding: 28px 18px; color: var(--muted); font-size: 0.9em; }
+
+  @keyframes noteFlash {
+    0%, 100% { background: transparent; }
+    30% { background: rgba(255, 224, 102, 0.65); }
+  }
+  .note-flash { animation: noteFlash 1.4s ease; }
 </style>
 </head>
 <body>
@@ -280,6 +336,7 @@
     <button id="search-next" title="Следующее совпадение">&darr;</button>
   </div>
   <div class="controls">
+    <button id="notes-toggle" title="Заметки">Заметки</button>
     <button id="font-dec" title="Уменьшить шрифт">A&minus;</button>
     <button id="font-inc" title="Увеличить шрифт">A+</button>
     <select id="font-select" title="Шрифт">
@@ -463,6 +520,14 @@
 </div>
 </main>
 <button id="back-to-toc" title="К содержанию">&#9776;</button>
+<div id="notes-backdrop"></div>
+<div id="notes-panel">
+  <div id="notes-panel-head">
+    <h2>Заметки</h2>
+    <button type="button" id="notes-close" aria-label="Закрыть">&times;</button>
+  </div>
+  <div id="notes-list"></div>
+</div>
 <div id="fn-overlay">
   <div id="fn-popup" role="dialog" aria-modal="true">
     <div id="fn-popup-head">
@@ -1038,6 +1103,88 @@ safeInit("highlighting and comments", function () {
       }
     }
   });
+
+  // ---------- "Заметки" panel: lists every highlight/comment, jumps to it ----------
+  var notesToggle = document.getElementById("notes-toggle");
+  var notesPanel = document.getElementById("notes-panel");
+  var notesBackdrop = document.getElementById("notes-backdrop");
+  var notesList = document.getElementById("notes-list");
+  var notesClose = document.getElementById("notes-close");
+
+  function fragmentText(ann) {
+    var marks = article.querySelectorAll('mark[data-ann="' + ann.id + '"]');
+    var text = Array.prototype.map.call(marks, function (m) { return m.textContent; }).join("");
+    text = text.trim();
+    return text.length > 70 ? text.slice(0, 70) + "…" : text;
+  }
+
+  function buildNotesList() {
+    notesList.innerHTML = "";
+    var items = annotations.filter(function (a) { return a.color || a.comment; });
+    if (!items.length) {
+      var empty = document.createElement("div");
+      empty.id = "notes-empty";
+      empty.textContent = "Пока нет выделений и комментариев.";
+      notesList.appendChild(empty);
+      return;
+    }
+    items.forEach(function (ann) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "note-item";
+      btn.setAttribute("data-ann", ann.id);
+
+      var swatch = document.createElement("span");
+      swatch.className = "note-swatch " + (ann.color || "none");
+      btn.appendChild(swatch);
+
+      var body = document.createElement("span");
+      body.className = "note-body";
+      var frag = document.createElement("span");
+      frag.className = "note-frag";
+      frag.textContent = fragmentText(ann) || "(фрагмент)";
+      body.appendChild(frag);
+      if (ann.comment) {
+        var c = document.createElement("span");
+        c.className = "note-comment-mark";
+        c.textContent = "💬 " + ann.comment;
+        body.appendChild(document.createElement("br"));
+        body.appendChild(c);
+      }
+      btn.appendChild(body);
+
+      btn.addEventListener("click", function () {
+        var mark = article.querySelector('mark[data-ann="' + ann.id + '"]');
+        if (mark) {
+          mark.scrollIntoView({ behavior: "smooth", block: "center" });
+          article.querySelectorAll('mark[data-ann="' + ann.id + '"]').forEach(function (m) {
+            m.classList.remove("note-flash");
+            void m.offsetWidth; // restart animation if clicked twice in a row
+            m.classList.add("note-flash");
+          });
+        }
+        closeNotes();
+      });
+      notesList.appendChild(btn);
+    });
+  }
+
+  function openNotes() {
+    buildNotesList();
+    notesPanel.classList.add("open");
+    notesBackdrop.classList.add("open");
+  }
+  function closeNotes() {
+    notesPanel.classList.remove("open");
+    notesBackdrop.classList.remove("open");
+  }
+  if (notesToggle) {
+    notesToggle.addEventListener("click", function () {
+      if (notesPanel.classList.contains("open")) { closeNotes(); } else { openNotes(); }
+    });
+    notesClose.addEventListener("click", closeNotes);
+    notesBackdrop.addEventListener("click", closeNotes);
+  }
 });
 
 // ---------- offline support: cache this page so it keeps working without a
