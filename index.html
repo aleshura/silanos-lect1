@@ -182,29 +182,37 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Docked to the bottom of the screen (not floating next to the selection)
+     so it never fights the browser's own native selection menu for space --
+     Samsung Internet, Chrome and Safari all render that native menu inside
+     the page's selection area, which would otherwise sit on top of a
+     toolbar positioned near the selection rect. */
   #sel-toolbar {
     position: fixed;
+    left: 0; right: 0; bottom: 0;
     display: none;
-    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     background: #2a2a2a;
-    padding: 7px;
-    border-radius: 10px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
     z-index: 250;
   }
   #sel-toolbar.open { display: flex; }
   #sel-toolbar button {
     border: none;
-    border-radius: 6px;
-    width: 34px; height: 34px;
+    border-radius: 8px;
+    width: 44px; height: 44px;
     cursor: pointer;
-    font-size: 15px;
+    font-size: 17px;
     -webkit-tap-highlight-color: transparent;
   }
   #sel-toolbar .swatch-blue { background: #7fbfff; }
   #sel-toolbar .swatch-green { background: #8fe08f; }
   #sel-toolbar .swatch-yellow { background: #ffe066; }
-  #sel-toolbar .swatch-comment { background: #555; color: #fff; width: auto; padding: 0 10px; }
+  #sel-toolbar .swatch-comment { background: #555; color: #fff; width: auto; padding: 0 16px; font-size: 15px; font-weight: 600; }
+  #sel-toolbar-hint { color: #ccc; font-size: 13px; margin-right: auto; padding-left: 4px; }
 
   /* comment input popup reuses the footnote popup's look */
   #comment-overlay {
@@ -456,6 +464,7 @@
   </div>
 </div>
 <div id="sel-toolbar">
+  <span id="sel-toolbar-hint">Выделено</span>
   <button type="button" class="swatch-blue" data-color="hl-blue" title="Голубой"></button>
   <button type="button" class="swatch-green" data-color="hl-green" title="Зелёный"></button>
   <button type="button" class="swatch-yellow" data-color="hl-yellow" title="Жёлтый"></button>
@@ -906,8 +915,16 @@ safeInit("highlighting and comments", function () {
   }
 
   // ---------- selection toolbar ----------
+  // Docked to the bottom of the screen and driven off "selectionchange"
+  // (debounced) rather than mouseup/touchend: on Samsung Internet and some
+  // other mobile browsers the native selection-handle UI keeps its own
+  // timing, so touchend can fire before the selection is actually final,
+  // and a toolbar positioned next to the selection ends up fighting the
+  // browser's own copy/share popup for the same screen space. Watching
+  // selectionchange sidesteps both problems.
   var toolbar = document.getElementById("sel-toolbar");
   var pendingRange = null, pendingBlock = null;
+  var selDebounce = null;
 
   function hideToolbar() {
     toolbar.classList.remove("open");
@@ -915,21 +932,7 @@ safeInit("highlighting and comments", function () {
     pendingBlock = null;
   }
 
-  function showToolbarFor(range, blockEl) {
-    pendingRange = range.cloneRange();
-    pendingBlock = blockEl;
-    var rect = range.getBoundingClientRect();
-    toolbar.classList.add("open");
-    var tw = toolbar.offsetWidth || 160, th = toolbar.offsetHeight || 46;
-    var left = rect.left + rect.width / 2 - tw / 2;
-    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
-    var top = rect.top - th - 10;
-    if (top < 8) { top = rect.bottom + 10; }
-    toolbar.style.left = left + "px";
-    toolbar.style.top = top + "px";
-  }
-
-  function handleSelectionChange() {
+  function evaluateSelection() {
     var sel = window.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) { hideToolbar(); return; }
     var range = sel.getRangeAt(0);
@@ -942,19 +945,13 @@ safeInit("highlighting and comments", function () {
       range = range.cloneRange();
       range.setEnd(startBlock, startBlock.childNodes.length);
     }
-    showToolbarFor(range, startBlock);
+    pendingRange = range.cloneRange();
+    pendingBlock = startBlock;
+    toolbar.classList.add("open");
   }
-  document.addEventListener("mouseup", function (e) {
-    if (toolbar.contains(e.target)) { return; }
-    setTimeout(handleSelectionChange, 0);
-  });
-  document.addEventListener("touchend", function (e) {
-    if (toolbar.contains(e.target)) { return; }
-    setTimeout(handleSelectionChange, 0);
-  });
   document.addEventListener("selectionchange", function () {
-    var sel = window.getSelection();
-    if (sel && sel.isCollapsed) { hideToolbar(); }
+    clearTimeout(selDebounce);
+    selDebounce = setTimeout(evaluateSelection, 250);
   });
 
   toolbar.querySelectorAll("[data-color]").forEach(function (btn) {
